@@ -32,12 +32,12 @@ const findNormalizableLinkInArray = (array, predicate) => {
  * @param link
  * @return {undefined}
  */
-const getLink = (allEntries, link) => {
+const getLink = (allEntries, link, map) => {
   const { linkType: type, id } = link.sys;
-
   const predicate = ({ sys }) => (sys.type === type && sys.id === id);
-
-  return findNormalizableLinkInArray(allEntries, predicate);
+  const res = map[id]
+  if(res && predicate(res)) return res
+  return UNRESOLVED_LINK
 };
 
 /**
@@ -83,8 +83,8 @@ const walkMutate = (input, predicate, mutator, removeUnresolved) => {
   return input;
 };
 
-const normalizeLink = (allEntries, link, removeUnresolved) => {
-  const resolvedLink = getLink(allEntries, link);
+const normalizeLink = (allEntries, link, removeUnresolved, map) => {
+  const resolvedLink = getLink(allEntries, link, map);
   if (resolvedLink === UNRESOLVED_LINK) {
     return removeUnresolved ? resolvedLink : link;
   }
@@ -124,6 +124,13 @@ const resolveResponse = (response, options) => {
 
   const allEntries = [...responseClone.items, ...allIncludes];
 
+  const map = {}
+  allEntries.forEach(e => {
+    const old = map[e.sys.id]
+    if(old) throw new Error('duplicate id', e.sys.id)
+    map[e.sys.id] = e
+  })
+
   allEntries
     .forEach((item) => {
       const entryObject = makeEntryObject(item, options.itemEntryPoints);
@@ -133,7 +140,7 @@ const resolveResponse = (response, options) => {
         walkMutate(
           entryObject,
           isLink,
-          (link) => normalizeLink(allEntries, link, options.removeUnresolved),
+          (link) => normalizeLink(allEntries, link, options.removeUnresolved, map),
           options.removeUnresolved
         )
       );
